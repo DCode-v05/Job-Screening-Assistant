@@ -52,7 +52,7 @@ init_default_user()
 # Root route for debugging
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({'message': 'Welcome to the ATS API', 'status': 'running'})
+    return render_template('index.html')
 
 # Login Check
 @app.route('/api/login', methods=['POST'])

@@ -26,7 +26,7 @@ app = Flask(__name__)
 CORS(app)  # Avoid Blocking
 
 # MongoDB connection with retry logic
-MONGO_URI = "mongodb+srv://denistanb05:deni123@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority&tls=true"
+MONGO_URI = "mongodb+srv://denistanb05:deni123@resumeanalyzer.vtti10v.mongodb.net/"
 
             
 

@@ -25,20 +25,25 @@ model_ats = SentenceTransformer("all-MiniLM-L6-v2")
 app = Flask(__name__)
 CORS(app)  # Avoid Blocking
 
-# MongoDB connection with retry logic
-MONGO_URI = "mongodb+srv://denistanb05:deni123@resumeanalyzer.vtti10v.mongodb.net/"       
+# MongoDB connection
+MONGO_URI = "mongodb+srv://denistanb05:deni123@resumeanalyzer.vtti10v.mongodb.net/"
 client = MongoClient(
-                MONGO_URI,
-                tls=True,
-                tlsAllowInvalidCertificates=True,  # Temporary for debugging
-                serverSelectionTimeoutMS=60000,
-                connectTimeoutMS=60000,
-                socketTimeoutMS=60000,
-                retryWrites=True,
-                retryReads=True
-            )
-client.server_info()  # Test connection
-logger.info("MongoDB connection successful.")
+    MONGO_URI,
+    tls=True,
+    tlsAllowInvalidCertificates=True,  # Temporary for debugging
+    serverSelectionTimeoutMS=60000,
+    connectTimeoutMS=60000,
+    socketTimeoutMS=60000,
+    retryWrites=True,
+    retryReads=True
+)
+
+try:
+    client.server_info()  # Test connection
+    logger.info("MongoDB connection successful.")
+except Exception as e:
+    logger.error(f"MongoDB connection failed: {e}")
+
 db_user = client['Login']
 users_collection = db_user['users']
 
@@ -60,18 +65,35 @@ def init_default_user():
 
 init_default_user()
 
-# Root route to serve index.html with MongoDB status
+# Root route to serve index.html (login page)
 @app.route('/', methods=['GET'])
+def index():
+    try:
+        client.server_info()  # Test MongoDB connection
+        mongo_status = "MongoDB: Connected"
+    except Exception as e:
+        mongo_status = f"MongoDB: Disconnected - {str(e)}"
+    return render_template('index.html', mongo_status=mongo_status)
+
+# Home route to serve home.html
+@app.route('/home', methods=['GET'])
 def home():
     try:
         client.server_info()  # Test MongoDB connection
         mongo_status = "MongoDB: Connected"
     except Exception as e:
         mongo_status = f"MongoDB: Disconnected - {str(e)}"
+    return render_template('home.html', mongo_status=mongo_status)
+
+# Resume Analyzer route
+@app.route('/resume-analyzer', methods=['GET'])
+def resume_analyzer():
     try:
-        return render_template('Resume_ATS.html', mongo_status=mongo_status)
+        client.server_info()  # Test MongoDB connection
+        mongo_status = "MongoDB: Connected"
     except Exception as e:
-        return f"Error: Could not load index.html - {str(e)}", 500
+        mongo_status = f"MongoDB: Disconnected - {str(e)}"
+    return render_template('Resume_ATS.html', mongo_status=mongo_status)
 
 # Login Check
 @app.route('/api/login', methods=['POST'])
@@ -89,7 +111,7 @@ def login():
         if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
             return jsonify({'success': False, 'error': 'password', 'message': 'Incorrect password'}), 401
         
-        return render_template('home.html')
+        return jsonify({'success': True, 'username': username})
     except Exception as e:
         logger.error(f"Login error: {e}")
         return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
@@ -121,7 +143,7 @@ def register():
         }
         
         users_collection.insert_one(new_user)
-        return render_template('login.html')
+        return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Register error: {e}")
         return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
@@ -245,17 +267,7 @@ def upload_files():
     } for resume, score in ranked_resumes]
 
     return jsonify(response)
-  
-# Add this route near your other routes (e.g., after /api/register)
-@app.route('/resume-analyzer', methods=['GET'])
-def resume_analyzer():
-    try:
-        client.server_info()  # Test MongoDB connection
-        mongo_status = "MongoDB: Connected"
-    except Exception as e:
-        mongo_status = f"MongoDB: Disconnected - {str(e)}"
-    return render_template('Resume_ATS.html', mongo_status=mongo_status)
-  
+
 # Local testing only (ignored when running with Gunicorn)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

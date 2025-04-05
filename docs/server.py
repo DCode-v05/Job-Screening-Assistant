@@ -18,13 +18,12 @@ model_ats = SentenceTransformer("all-MiniLM-L6-v2")
 app = Flask(__name__)
 CORS(app)  # Avoid Blocking
 
-# MongoDB connection with TLS debugging
+# MongoDB connection with corrected options
 MONGO_URI = "mongodb+srv://denistanb05:eTopU4aZ67dDmSXb@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority&tls=true"
 client = MongoClient(
     MONGO_URI,
     tls=True,
     tlsAllowInvalidCertificates=True,  # Temporary for debugging
-    tlsVersion="TLS1_2",              # Force TLS 1.2
     serverSelectionTimeoutMS=60000,
     connectTimeoutMS=60000,
     socketTimeoutMS=60000,

@@ -14,7 +14,8 @@ app = Flask(__name__)
 CORS(app) # Avoid Blocking
 
 # MongoDB connection
-client = MongoClient('mongodb://localhost:27017/')
+MONGO_URI = "mongodb+srv://denistanb05:eTopU4aZ67dDmSXb@hackathoncluster.8pkzngw.mongodb.net/Login?retryWrites=true&w=majority&appName=HackathonCluster"
+client = MongoClient(MONGO_URI)
 db_user = client['Login']
 users_collection = db_user['users']
 

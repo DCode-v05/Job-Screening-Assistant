@@ -15,7 +15,7 @@ CORS(app) # Avoid Blocking
 
 # MongoDB connection
 client = MongoClient(
-    "mongodb+srv://<username>:<password>@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority"
+    "mongodb+srv://denistanb05:eTopU4aZ67dDmSXb@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority"
 )
 client = MongoClient(MONGO_URI)
 db_user = client['Login']

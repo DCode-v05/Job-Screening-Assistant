@@ -18,18 +18,27 @@ model_ats = SentenceTransformer("all-MiniLM-L6-v2")
 app = Flask(__name__)
 CORS(app)  # Avoid Blocking
 
-# MongoDB connection with improved SSL and retry options
-MONGO_URI = "mongodb+srv://denistanb05:eTopU4aZ67dDmSXb@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=false"
+# MongoDB connection with TLS debugging
+MONGO_URI = "mongodb+srv://denistanb05:eTopU4aZ67dDmSXb@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority&tls=true"
 client = MongoClient(
     MONGO_URI,
     tls=True,
-    tlsAllowInvalidCertificates=False,
+    tlsAllowInvalidCertificates=True,  # Temporary for debugging
+    tlsVersion="TLS1_2",              # Force TLS 1.2
     serverSelectionTimeoutMS=60000,
     connectTimeoutMS=60000,
     socketTimeoutMS=60000,
     retryWrites=True,
     retryReads=True
 )
+
+# Test MongoDB connection immediately
+try:
+    client.server_info()  # Forces a connection test
+    print("MongoDB connection successful.")
+except Exception as e:
+    print(f"MongoDB connection failed: {e}")
+
 db_user = client['Login']
 users_collection = db_user['users']
 
@@ -44,15 +53,22 @@ def init_default_user():
             }
             users_collection.insert_one(default_user)
             print("Default user initialized successfully.")
+        else:
+            print("Default user already exists.")
     except Exception as e:
         print(f"Error initializing default user: {e}")
 
 init_default_user()
 
-# Root route for debugging
+# Root route to serve index.html with MongoDB status
 @app.route('/', methods=['GET'])
 def home():
-    return render_template('index.html')
+    try:
+        client.server_info()  # Test MongoDB connection
+        mongo_status = "MongoDB: Connected"
+    except Exception as e:
+        mongo_status = f"MongoDB: Disconnected - {str(e)}"
+    return render_template('index.html', mongo_status=mongo_status)
 
 # Login Check
 @app.route('/api/login', methods=['POST'])
@@ -223,7 +239,7 @@ def upload_files():
         "resume": resume,
         "score": round(score * 100, 2),
         "feedback": feedback_results[resume]
-    } for resume, score in ranked_results]
+    } for resume, score in ranked_resumes]
 
     return jsonify(response)
 

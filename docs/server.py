@@ -7,6 +7,10 @@ import pdfplumber
 from sentence_transformers import SentenceTransformer, util
 import os
 import re
+import warnings
+
+# Suppress the FutureWarning from huggingface_hub
+warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hub.file_download")
 
 # Load BERT model
 model_ats = SentenceTransformer("all-MiniLM-L6-v2")
@@ -14,15 +18,17 @@ model_ats = SentenceTransformer("all-MiniLM-L6-v2")
 app = Flask(__name__)
 CORS(app)  # Avoid Blocking
 
-# MongoDB connection with additional options for SSL and retries
+# MongoDB connection with improved SSL and retry options
 MONGO_URI = "mongodb+srv://denistanb05:eTopU4aZ67dDmSXb@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=false"
 client = MongoClient(
     MONGO_URI,
     tls=True,
-    tlsAllowInvalidCertificates=False,  # Set to True if using self-signed certs (not recommended for production)
-    serverSelectionTimeoutMS=30000,  # Increase timeout to 30 seconds
-    connectTimeoutMS=30000,          # Increase connection timeout
-    socketTimeoutMS=30000            # Increase socket timeout
+    tlsAllowInvalidCertificates=False,
+    serverSelectionTimeoutMS=60000,
+    connectTimeoutMS=60000,
+    socketTimeoutMS=60000,
+    retryWrites=True,
+    retryReads=True
 )
 db_user = client['Login']
 users_collection = db_user['users']
@@ -30,66 +36,79 @@ users_collection = db_user['users']
 # Initialize default user if collection is empty
 def init_default_user():
     try:
-        if users_collection.count_documents({}) == 0:
+        if users_collection.count_documents({}, maxTimeMS=60000) == 0:
             hashed_password = bcrypt.hashpw('User@123'.encode('utf-8'), bcrypt.gensalt())
             default_user = {
                 'username': 'user',
                 'password': hashed_password.decode('utf-8')
             }
             users_collection.insert_one(default_user)
+            print("Default user initialized successfully.")
     except Exception as e:
         print(f"Error initializing default user: {e}")
 
 init_default_user()
 
+# Root route for debugging
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({'message': 'Welcome to the ATS API', 'status': 'running'})
+
 # Login Check
 @app.route('/api/login', methods=['POST'])
 def login():
+    print(f"Received login request: {request.get_json()}")
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
 
-    user = users_collection.find_one({'username': username})
-    
-    if not user:
-        return jsonify({'success': False, 'error': 'username', 'message': 'User not found'}), 401
-    
-    if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-        return jsonify({'success': False, 'error': 'password', 'message': 'Incorrect password'}), 401
-    
-    return jsonify({'success': True, 'username': username})
+    try:
+        user = users_collection.find_one({'username': username})
+        if not user:
+            return jsonify({'success': False, 'error': 'username', 'message': 'User not found'}), 401
+        
+        if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+            return jsonify({'success': False, 'error': 'password', 'message': 'Incorrect password'}), 401
+        
+        return jsonify({'success': True, 'username': username})
+    except Exception as e:
+        print(f"Login error: {e}")
+        return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
 
 # Register Storage
 @app.route('/api/register', methods=['POST'])
 def register():
+    print(f"Received register request: {request.get_json()}")
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
 
-    if users_collection.find_one({'username': username}):
-        return jsonify({'success': False, 'error': 'newUsername', 'message': 'Username already exists'}), 400
+    try:
+        if users_collection.find_one({'username': username}):
+            return jsonify({'success': False, 'error': 'newUsername', 'message': 'Username already exists'}), 400
 
-    # Password validation
-    password_regex = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$'
-    if not re.match(password_regex, password):
-        return jsonify({
-            'success': False,
-            'error': 'newPassword',
-            'message': 'Password must be at least 8 characters and contain one uppercase, one lowercase, one number, and one special character (!@#$%^&*)'
-        }), 400
+        password_regex = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$'
+        if not re.match(password_regex, password):
+            return jsonify({
+                'success': False,
+                'error': 'newPassword',
+                'message': 'Password must be at least 8 characters and contain one uppercase, one lowercase, one number, and one special character (!@#$%^&*)'
+            }), 400
 
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-    new_user = {
-        'username': username,
-        'password': hashed_password.decode('utf-8')
-    }
-    
-    users_collection.insert_one(new_user)
-    return jsonify({'success': True})
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+        new_user = {
+            'username': username,
+            'password': hashed_password.decode('utf-8')
+        }
+        
+        users_collection.insert_one(new_user)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Register error: {e}")
+        return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
 
 # ATS Functions
 def extract_text_from_pdf(file):
-    """Extract text from a PDF file object in memory."""
     text = ""
     try:
         with pdfplumber.open(io.BytesIO(file.read())) as pdf:
@@ -103,7 +122,6 @@ def extract_text_from_pdf(file):
     return text.strip()
 
 def generate_feedback(resume_text, job_description, model_score):
-    """Generate friendly feedback based on resume, job description, and model score."""
     job_keywords = set(job_description.lower().split())
     resume_keywords = set(resume_text.lower().split())
     
@@ -154,7 +172,6 @@ def generate_feedback(resume_text, job_description, model_score):
     return feedback
 
 def rank_resumes(resume_files, job_description):
-    """Rank resumes based on similarity to the job description without saving to disk."""
     job_embedding = model_ats.encode(job_description, convert_to_tensor=True)
     resume_scores = {}
     resume_feedback = {}
@@ -179,7 +196,7 @@ def rank_resumes(resume_files, job_description):
 
 @app.route("/upload/", methods=["POST"])
 def upload_files():
-    """Handle file uploads and return ranking results without saving to disk."""
+    print(f"Received upload request: {request.form}")
     if "job_description" not in request.form:
         return jsonify({"message": "Job description is required"}), 400
 
@@ -210,8 +227,7 @@ def upload_files():
 
     return jsonify(response)
 
-# Render-specific configuration
+# Local testing only (ignored when running with Gunicorn)
 if __name__ == "__main__":
-    # Use the PORT environment variable provided by Render, default to 5000 for local testing
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)

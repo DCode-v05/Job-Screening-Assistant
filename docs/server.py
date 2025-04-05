@@ -69,7 +69,7 @@ def home():
     except Exception as e:
         mongo_status = f"MongoDB: Disconnected - {str(e)}"
     try:
-        return render_template('index.html', mongo_status=mongo_status)
+        return render_template('Resume_ATS.html', mongo_status=mongo_status)
     except Exception as e:
         return f"Error: Could not load index.html - {str(e)}", 500
 

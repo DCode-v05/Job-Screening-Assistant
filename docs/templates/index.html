@@ -247,7 +247,7 @@
 
         .success-animation h2 {
             background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
-            -webkit-background-clip: text;
+ায়            -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
             font-size: 1.5rem;
@@ -370,7 +370,6 @@
     </style>
 </head>
 <body>
-    <!-- Login -->
     <!-- <img src="logo.png" alt="Logo" class="logo1"> -->
     <div class="container">
         <div class="logo">
@@ -534,19 +533,19 @@
                     body: JSON.stringify({ username, password })
                 });
                 
-                // const data = await response.json();
+                const data = await response.json();
                 
-                // if (!data.success) {
-                //     showError(data.error, data.message);
-                //     return;
-                // }
+                if (!data.success) {
+                    showError(data.error, data.message);
+                    return;
+                }
 
                 const successAnimation = document.getElementById('loginSuccess');
                 successAnimation.classList.add('show');
                 
                 setTimeout(() => {
                     successAnimation.classList.remove('show');
-                    window.location.href = 'home.html';
+                    window.location.href = 'https://job-screening-assistant.onrender.com/home';
                 }, 1000);
                 
             } catch (error) {

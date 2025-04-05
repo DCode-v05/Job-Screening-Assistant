@@ -27,11 +27,11 @@ CORS(app)  # Avoid Blocking
 
 # MongoDB connection with retry logic
 MONGO_URI = "mongodb+srv://denistanb05:deni123@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority&tls=true"
-def connect_to_mongo(uri, max_retries=5, delay=5):
-    for attempt in range(max_retries):
-        try:
-            client = MongoClient(
-                uri,
+
+            
+
+client = MongoClient(
+                MONGO_URI,
                 tls=True,
                 tlsAllowInvalidCertificates=True,  # Temporary for debugging
                 serverSelectionTimeoutMS=60000,
@@ -42,16 +42,6 @@ def connect_to_mongo(uri, max_retries=5, delay=5):
             )
             client.server_info()  # Test connection
             logger.info("MongoDB connection successful.")
-            return client
-        except Exception as e:
-            logger.error(f"MongoDB connection attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(delay)
-            else:
-                logger.error(f"MongoDB connection failed after {max_retries} attempts: {e}")
-                raise
-
-client = connect_to_mongo(MONGO_URI)
 db_user = client['Login']
 users_collection = db_user['users']
 

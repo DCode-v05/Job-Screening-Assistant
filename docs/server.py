@@ -26,10 +26,7 @@ app = Flask(__name__)
 CORS(app)  # Avoid Blocking
 
 # MongoDB connection with retry logic
-MONGO_URI = "mongodb+srv://denistanb05:deni123@resumeanalyzer.vtti10v.mongodb.net/"
-
-            
-
+MONGO_URI = "mongodb+srv://denistanb05:deni123@resumeanalyzer.vtti10v.mongodb.net/"       
 client = MongoClient(
                 MONGO_URI,
                 tls=True,
@@ -92,7 +89,7 @@ def login():
         if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
             return jsonify({'success': False, 'error': 'password', 'message': 'Incorrect password'}), 401
         
-        return jsonify({'success': True, 'username': username})
+        return render_template('home.html')
     except Exception as e:
         logger.error(f"Login error: {e}")
         return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
@@ -124,7 +121,7 @@ def register():
         }
         
         users_collection.insert_one(new_user)
-        return jsonify({'success': True})
+        return render_template('login.html')
     except Exception as e:
         logger.error(f"Register error: {e}")
         return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500

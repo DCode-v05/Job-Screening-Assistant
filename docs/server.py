@@ -245,7 +245,17 @@ def upload_files():
     } for resume, score in ranked_resumes]
 
     return jsonify(response)
-
+  
+# Add this route near your other routes (e.g., after /api/register)
+@app.route('/resume-analyzer', methods=['GET'])
+def resume_analyzer():
+    try:
+        client.server_info()  # Test MongoDB connection
+        mongo_status = "MongoDB: Connected"
+    except Exception as e:
+        mongo_status = f"MongoDB: Disconnected - {str(e)}"
+    return render_template('Resume_ATS.html', mongo_status=mongo_status)
+  
 # Local testing only (ignored when running with Gunicorn)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

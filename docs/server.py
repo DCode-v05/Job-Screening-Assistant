@@ -40,8 +40,8 @@ client = MongoClient(
                 retryWrites=True,
                 retryReads=True
             )
-            client.server_info()  # Test connection
-            logger.info("MongoDB connection successful.")
+client.server_info()  # Test connection
+logger.info("MongoDB connection successful.")
 db_user = client['Login']
 users_collection = db_user['users']
 

@@ -1,4 +1,5 @@
 gunicorn
+numpy<2.0
 Flask==3.0.3
 requests==2.31.0
 Jinja2==3.1.3

@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template
 from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure
 from flask_cors import CORS
 import io
 import bcrypt
@@ -8,9 +9,15 @@ from sentence_transformers import SentenceTransformer, util
 import os
 import re
 import warnings
+import logging
+import time
 
 # Suppress the FutureWarning from huggingface_hub
 warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hub.file_download")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load BERT model
 model_ats = SentenceTransformer("all-MiniLM-L6-v2")
@@ -18,26 +25,33 @@ model_ats = SentenceTransformer("all-MiniLM-L6-v2")
 app = Flask(__name__)
 CORS(app)  # Avoid Blocking
 
-# MongoDB connection with corrected options
+# MongoDB connection with retry logic
 MONGO_URI = "mongodb+srv://denistanb05:eTopU4aZ67dDmSXb@hackathoncluster.8pkzngw.mongodb.net/?retryWrites=true&w=majority&tls=true"
-client = MongoClient(
-    MONGO_URI,
-    tls=True,
-    tlsAllowInvalidCertificates=True,  # Temporary for debugging
-    serverSelectionTimeoutMS=60000,
-    connectTimeoutMS=60000,
-    socketTimeoutMS=60000,
-    retryWrites=True,
-    retryReads=True
-)
+def connect_to_mongo(uri, max_retries=5, delay=5):
+    for attempt in range(max_retries):
+        try:
+            client = MongoClient(
+                uri,
+                tls=True,
+                tlsAllowInvalidCertificates=True,  # Temporary for debugging
+                serverSelectionTimeoutMS=60000,
+                connectTimeoutMS=60000,
+                socketTimeoutMS=60000,
+                retryWrites=True,
+                retryReads=True
+            )
+            client.server_info()  # Test connection
+            logger.info("MongoDB connection successful.")
+            return client
+        except Exception as e:
+            logger.error(f"MongoDB connection attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(delay)
+            else:
+                logger.error(f"MongoDB connection failed after {max_retries} attempts: {e}")
+                raise
 
-# Test MongoDB connection immediately
-try:
-    client.server_info()  # Forces a connection test
-    print("MongoDB connection successful.")
-except Exception as e:
-    print(f"MongoDB connection failed: {e}")
-
+client = connect_to_mongo(MONGO_URI)
 db_user = client['Login']
 users_collection = db_user['users']
 
@@ -51,11 +65,11 @@ def init_default_user():
                 'password': hashed_password.decode('utf-8')
             }
             users_collection.insert_one(default_user)
-            print("Default user initialized successfully.")
+            logger.info("Default user initialized successfully.")
         else:
-            print("Default user already exists.")
+            logger.info("Default user already exists.")
     except Exception as e:
-        print(f"Error initializing default user: {e}")
+        logger.error(f"Error initializing default user: {e}")
 
 init_default_user()
 
@@ -67,12 +81,15 @@ def home():
         mongo_status = "MongoDB: Connected"
     except Exception as e:
         mongo_status = f"MongoDB: Disconnected - {str(e)}"
-    return render_template('index.html', mongo_status=mongo_status)
+    try:
+        return render_template('index.html', mongo_status=mongo_status)
+    except Exception as e:
+        return f"Error: Could not load index.html - {str(e)}", 500
 
 # Login Check
 @app.route('/api/login', methods=['POST'])
 def login():
-    print(f"Received login request: {request.get_json()}")
+    logger.info(f"Received login request: {request.get_json()}")
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -87,13 +104,13 @@ def login():
         
         return jsonify({'success': True, 'username': username})
     except Exception as e:
-        print(f"Login error: {e}")
+        logger.error(f"Login error: {e}")
         return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
 
 # Register Storage
 @app.route('/api/register', methods=['POST'])
 def register():
-    print(f"Received register request: {request.get_json()}")
+    logger.info(f"Received register request: {request.get_json()}")
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -119,7 +136,7 @@ def register():
         users_collection.insert_one(new_user)
         return jsonify({'success': True})
     except Exception as e:
-        print(f"Register error: {e}")
+        logger.error(f"Register error: {e}")
         return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
 
 # ATS Functions
@@ -132,7 +149,7 @@ def extract_text_from_pdf(file):
                 if page_text:
                     text += page_text + "\n"
     except Exception as e:
-        print(f"Error reading file: {e}")
+        logger.error(f"Error reading file: {e}")
         return ""
     return text.strip()
 
@@ -194,14 +211,14 @@ def rank_resumes(resume_files, job_description):
     for file in resume_files:
         resume_text = extract_text_from_pdf(file)
         if not resume_text:
-            print(f"Skipping {file.filename} (No text extracted)")
+            logger.info(f"Skipping {file.filename} (No text extracted)")
             continue
 
         resume_embedding = model_ats.encode(resume_text, convert_to_tensor=True)
         similarity = util.pytorch_cos_sim(job_embedding, resume_embedding)
         score = similarity.item()
 
-        print(f"Resume: {file.filename} | Score: {score}")
+        logger.info(f"Resume: {file.filename} | Score: {score}")
 
         resume_scores[file.filename] = score
         resume_feedback[file.filename] = generate_feedback(resume_text, job_description, score)
@@ -211,7 +228,7 @@ def rank_resumes(resume_files, job_description):
 
 @app.route("/upload/", methods=["POST"])
 def upload_files():
-    print(f"Received upload request: {request.form}")
+    logger.info(f"Received upload request: {request.form}")
     if "job_description" not in request.form:
         return jsonify({"message": "Job description is required"}), 400
 
@@ -227,7 +244,7 @@ def upload_files():
         if not file or not file.filename.endswith(".pdf"):
             return jsonify({"message": "Please upload only PDF files"}), 400
 
-    print(f"Received files: {[file.filename for file in resumes]}")
+    logger.info(f"Received files: {[file.filename for file in resumes]}")
 
     ranked_results, feedback_results = rank_resumes(resumes, job_description)
 

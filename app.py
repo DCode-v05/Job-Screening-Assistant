@@ -65,7 +65,7 @@ init_default_user()
 @app.route('/', methods=['GET'])
 def index():
     try:
-        client.server_info()  # Test MongoDB connection
+        client.server_info()  
         mongo_status = "MongoDB: Connected"
     except Exception as e:
         mongo_status = f"MongoDB: Disconnected - {str(e)}"
@@ -74,7 +74,7 @@ def index():
 @app.route('/home', methods=['GET'])
 def home():
     try:
-        client.server_info()  # Test MongoDB connection
+        client.server_info()  
         mongo_status = "MongoDB: Connected"
     except Exception as e:
         mongo_status = f"MongoDB: Disconnected - {str(e)}"
@@ -83,7 +83,7 @@ def home():
 @app.route('/resume-analyzer', methods=['GET'])
 def resume_analyzer():
     try:
-        client.server_info()  # Test MongoDB connection
+        client.server_info()  
         mongo_status = "MongoDB: Connected"
     except Exception as e:
         mongo_status = f"MongoDB: Disconnected - {str(e)}"

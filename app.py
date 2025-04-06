@@ -6,7 +6,6 @@ import io
 import bcrypt
 import pdfplumber
 import os
-# Set writable cache directory
 os.environ["TRANSFORMERS_CACHE"] = "/tmp/hf_cache"
 from sentence_transformers import SentenceTransformer, util
 import re
@@ -14,25 +13,21 @@ import warnings
 import logging
 import time
 
-# Suppress the FutureWarning from huggingface_hub
 warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hub.file_download")
-
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load BERT model
+# BERT model
 model_ats = SentenceTransformer("all-MiniLM-L6-v2")
 
 app = Flask(__name__)
-CORS(app)  # Avoid Blocking
+CORS(app)  
 
-# MongoDB connection
 MONGO_URI = "mongodb+srv://denistanb05:deni123@resumeanalyzer.vtti10v.mongodb.net/"
 client = MongoClient(
     MONGO_URI,
     tls=True,
-    tlsAllowInvalidCertificates=True,  # Temporary for debugging
+    tlsAllowInvalidCertificates=True,  
     serverSelectionTimeoutMS=60000,
     connectTimeoutMS=60000,
     socketTimeoutMS=60000,
@@ -41,7 +36,7 @@ client = MongoClient(
 )
 
 try:
-    client.server_info()  # Test connection
+    client.server_info()  
     logger.info("MongoDB connection successful.")
 except Exception as e:
     logger.error(f"MongoDB connection failed: {e}")
@@ -49,7 +44,7 @@ except Exception as e:
 db_user = client['Login']
 users_collection = db_user['users']
 
-# Initialize default user if collection is empty
+
 def init_default_user():
     try:
         if users_collection.count_documents({}, maxTimeMS=60000) == 0:
@@ -67,7 +62,6 @@ def init_default_user():
 
 init_default_user()
 
-# Root route to serve index.html (login page)
 @app.route('/', methods=['GET'])
 def index():
     try:
@@ -77,7 +71,6 @@ def index():
         mongo_status = f"MongoDB: Disconnected - {str(e)}"
     return render_template('index.html', mongo_status=mongo_status)
 
-# Home route to serve home.html
 @app.route('/home', methods=['GET'])
 def home():
     try:
@@ -87,7 +80,6 @@ def home():
         mongo_status = f"MongoDB: Disconnected - {str(e)}"
     return render_template('home.html', mongo_status=mongo_status)
 
-# Resume Analyzer route
 @app.route('/resume-analyzer', methods=['GET'])
 def resume_analyzer():
     try:
@@ -97,7 +89,6 @@ def resume_analyzer():
         mongo_status = f"MongoDB: Disconnected - {str(e)}"
     return render_template('Resume_ATS.html', mongo_status=mongo_status)
 
-# Login Check
 @app.route('/api/login', methods=['POST'])
 def login():
     logger.info(f"Received login request: {request.get_json()}")
@@ -118,7 +109,6 @@ def login():
         logger.error(f"Login error: {e}")
         return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
 
-# Register Storage
 @app.route('/api/register', methods=['POST'])
 def register():
     logger.info(f"Received register request: {request.get_json()}")
@@ -150,7 +140,6 @@ def register():
         logger.error(f"Register error: {e}")
         return jsonify({'success': False, 'error': 'server', 'message': 'Database connection error'}), 500
 
-# ATS Functions
 def extract_text_from_pdf(file):
     text = ""
     try:
@@ -237,7 +226,6 @@ def rank_resumes(resume_files, job_description):
     ranked_resumes = sorted(resume_scores.items(), key=lambda x: x[1], reverse=True)
     return ranked_resumes, resume_feedback
 
-# Corrected route to match frontend URL
 @app.route("/api/upload", methods=["POST"])
 def upload_files():
     logger.info(f"Received upload request: {request.form}")
@@ -267,11 +255,10 @@ def upload_files():
         "resume": resume,
         "score": round(score * 100, 2),
         "feedback": feedback_results[resume]
-    } for resume, score in ranked_results]  # Changed ranked_resumes to ranked_results
+    } for resume, score in ranked_results]
 
     return jsonify(response)
 
-# Local testing only (ignored when running with Gunicorn)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)

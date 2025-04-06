@@ -5,8 +5,10 @@ from flask_cors import CORS
 import io
 import bcrypt
 import pdfplumber
-from sentence_transformers import SentenceTransformer, util
 import os
+# Set writable cache directory
+os.environ["TRANSFORMERS_CACHE"] = "/tmp/hf_cache"
+from sentence_transformers import SentenceTransformer, util
 import re
 import warnings
 import logging
@@ -235,7 +237,8 @@ def rank_resumes(resume_files, job_description):
     ranked_resumes = sorted(resume_scores.items(), key=lambda x: x[1], reverse=True)
     return ranked_resumes, resume_feedback
 
-@app.route("/upload/", methods=["POST"])
+# Corrected route to match frontend URL
+@app.route("/api/upload", methods=["POST"])
 def upload_files():
     logger.info(f"Received upload request: {request.form}")
     if "job_description" not in request.form:
@@ -264,7 +267,7 @@ def upload_files():
         "resume": resume,
         "score": round(score * 100, 2),
         "feedback": feedback_results[resume]
-    } for resume, score in ranked_resumes]
+    } for resume, score in ranked_results]  # Changed ranked_resumes to ranked_results
 
     return jsonify(response)
 

@@ -23,7 +23,7 @@ model_ats = SentenceTransformer("all-MiniLM-L6-v2")
 app = Flask(__name__)
 CORS(app)  
 
-MONGO_URI = "mongodb+srv://denistanb05:deni123@resumeanalyzer.vtti10v.mongodb.net/"
+MONGO_URI = "YOUR_MONGODB_URI"
 client = MongoClient(
     MONGO_URI,
     tls=True,

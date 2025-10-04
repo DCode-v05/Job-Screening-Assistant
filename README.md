@@ -79,7 +79,7 @@ This application automates the screening of resumes against a job description by
 ### Installation
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/TensoRag/Job-Screening-Assistant.git
+   git clone https://github.com/DCode-v05/Job-Screening-Assistant.git
    cd Job-Screening-Assistant
    ```
 2. **Install Dependencies**
@@ -151,5 +151,5 @@ Contributions are welcome! To contribute:
 ---
 
 ## Contact
-- **GitHub:** [https://github.com/TensoRag](https://github.com/TensoRag)
+- **GitHub:** [https://github.com/DCode-v05](https://github.com/DCode-v05)
 - **Email:** denistanb05@gmail.com

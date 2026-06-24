@@ -1,155 +1,158 @@
 # Job Screening Assistant
 
-## Project Description
-Job Screening Assistant is an AI-powered web application designed to streamline and automate the resume screening process for recruiters and HR professionals. By leveraging advanced Natural Language Processing (NLP) techniques, the application analyzes and compares candidate resumes against job descriptions, providing data-driven insights and compatibility scores to identify top talent efficiently.
+**An ATS-style resume analyzer that ranks a stack of PDF resumes against a job description using sentence-embedding similarity, then explains each score in plain language.**
 
----
+![Python](https://img.shields.io/badge/Python-3.10-3776AB?style=flat&logo=python&logoColor=white) ![Flask](https://img.shields.io/badge/Flask-3.0-000000?style=flat&logo=flask&logoColor=white) ![sentence-transformers](https://img.shields.io/badge/sentence--transformers-MiniLM-FFD21E?style=flat&logo=huggingface&logoColor=black) ![PyTorch](https://img.shields.io/badge/PyTorch-2.2-EE4C2C?style=flat&logo=pytorch&logoColor=white) ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=flat&logo=mongodb&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
 
-## Project Details
+## Overview
 
-### Overview
-Recruiters often face the challenge of manually reviewing large volumes of resumes to find suitable candidates. Job Screening Assistant automates this process by:
-- Extracting and parsing key details from uploaded PDF resumes.
-- Analyzing job descriptions to identify essential skills, qualifications, and keywords.
-- Matching candidates using semantic similarity and keyword overlap.
-- Scoring and ranking candidates to highlight the best fits.
+Recruiters end up reading the same handful of resumes over and over to figure out who actually fits a role. This is a small Flask web app that does the first pass for them: you paste in a job description, upload a batch of PDF resumes, and it scores and ranks each candidate by how closely their resume matches the job — semantically, not just by keyword grepping.
 
-### Core Features
-- **Resume Upload:** Upload multiple candidate resumes in PDF format.
-- **Job Description Input:** Paste or upload a job description for analysis.
-- **AI-Powered Matching:** Utilizes NLP models to compare resumes and job requirements.
-- **Compatibility Score:** Provides a percentage-based match score for each candidate.
-- **Detailed Feedback:** Offers personalized suggestions to improve resume alignment.
-- **User Management:** Supports user registration and login with secure password storage.
-- **Web Interface:** Intuitive front-end built with Flask and Jinja2 templates.
-- **Docker Support:** Easily deployable using Docker for consistent environments.
+Under the hood it embeds the job description and every resume with a sentence-transformer model and ranks them by cosine similarity, then layers a keyword-overlap pass on top to write human-readable feedback for each resume ("you're missing these words", "tighten the length", etc.). It was built as a team project (Team ISS057 / "Deep Thinkers") and ships with a Dockerfile tuned for Hugging Face Spaces, where it was deployed.
+
+## Key Features
+
+- **Batch PDF upload** — drop in multiple resumes at once; each is validated to be a `.pdf` before processing.
+- **Semantic matching** — job description and resumes are turned into embeddings with `all-MiniLM-L6-v2` and compared by cosine similarity, so a candidate who says "built REST APIs" still scores against a JD asking for "web services."
+- **Ranked results** — resumes come back sorted high-to-low by match score (0–100), so the strongest candidates float to the top.
+- **Per-resume feedback** — alongside the score, every resume gets tailored notes: keyword match percentage, which job keywords are missing, which ones already hit, and whether the resume is too short or too long.
+- **User accounts** — registration and login backed by MongoDB, with passwords hashed using bcrypt and a password-strength regex (min 8 chars, upper + lower + digit + special).
+- **JSON API** — `/api/upload` returns structured results, so the scoring engine can be called from the bundled UI or any other client.
+- **Containerized** — a Dockerfile builds the whole thing (model deps included) and serves it under gunicorn, ready for Hugging Face Spaces or any container host.
+- **Connection health check** — every page render pings MongoDB and surfaces a connected/disconnected status, which makes deployment debugging less of a guessing game.
 
 ## How It Works
 
-This application automates the screening of resumes against a job description by extracting content from uploaded PDF resumes and a job description text, analyzing them semantically, and computing a compatibility score to rank candidates.
+The whole flow is a single Flask app (`app.py`) with a static front-end in `templates/`. The model is loaded once at startup so requests don't pay the load cost.
 
-### 1. Resume Parsing
+### 1. Input
 
-- **PDF Extraction**: Resumes uploaded as PDF files are processed using `pdfplumber` to extract raw text from each page.
-- **Text Concatenation**: Extracted text from all pages of a resume is combined into a single string for analysis.
-- **Preprocessing**: The raw text is cleaned and prepared for embedding and keyword comparison.
+The front-end (`Resume_ATS.html`) collects a job description as plain text and one or more resume files, then POSTs them as multipart form data to `/api/upload`. The route rejects the request early if the job description is missing, no files were sent, or any file isn't a PDF.
 
-### 2. Job Description Input
+### 2. Resume parsing
 
-- **Text Input**: Users provide the job description as plain text.
-- **Preprocessing**: The job description text is cleaned and tokenized similarly to resumes.
+Each uploaded PDF is read in-memory with `pdfplumber` — every page's text is extracted and concatenated into one string. Files that yield no extractable text (e.g. scanned image-only resumes) are skipped and logged rather than crashing the batch.
 
-### 3. Semantic Matching Algorithm
+### 3. Semantic scoring
 
-- **Embedding Generation**: Both the job description and each resume’s text are converted into vector embeddings using the `SentenceTransformer` model (`all-MiniLM-L6-v2`), which captures semantic meaning.
-- **Similarity Scoring**: Cosine similarity is computed between the job description embedding and each resume embedding to quantify semantic relevance.
-- **Ranking**: Resumes are ranked based on their similarity scores, with higher scores indicating better matches.
+The job description is encoded once into an embedding with `SentenceTransformer("all-MiniLM-L6-v2")`. Each resume's text is encoded the same way, and `util.pytorch_cos_sim` computes cosine similarity between the JD embedding and each resume embedding. That similarity (a float in roughly 0–1) becomes the candidate's raw score; it's multiplied by 100 and rounded to two decimals for display.
 
-### 4. Feedback Generation
+### 4. Feedback generation
 
-- **Keyword Analysis**: The system compares keywords from the job description and each resume to identify missing or matching important terms.
-- **Match Percentage**: Calculates the percentage of job description keywords found in the resume.
-- **Personalized Feedback**: Provides tailored suggestions to improve the resume’s alignment with the job description, considering keyword matches, missing keywords, similarity score, and resume length.
+Scoring alone doesn't tell a candidate *why* they ranked where they did, so `generate_feedback` runs a separate keyword pass:
 
-### 5. Results Display
+- It lowercases and tokenizes both the JD and the resume, then computes the set intersection (matching keywords) and difference (missing keywords).
+- From that it derives a keyword match percentage and writes graded messages at the 80% / 50% / 20% thresholds.
+- It cross-references the semantic score (80% / 60% / 40% bands) to comment on the deeper match.
+- It checks resume word count and flags resumes under ~100 words as too thin or over ~500 as too long.
 
-- **API Response**: Returns a JSON list of resumes with their compatibility scores and detailed feedback.
-- **Frontend UI**: Flask routes render pages where users can upload resumes, enter job descriptions, and view results interactively.
-- **User Management**: Supports user registration and login with hashed passwords stored securely in MongoDB.
+All of those snippets are joined into one feedback paragraph per resume.
 
+### 5. Ranking and response
 
----
+Resumes are sorted by score descending and returned as a JSON array of `{ resume, score, feedback }`. The front-end renders that into a results list with a score and a feedback line per candidate.
+
+### Accounts and persistence
+
+Login and registration (`/api/login`, `/api/register`) live in the same app and talk to MongoDB via `pymongo`. Passwords are hashed with bcrypt; registration validates strength with a regex before storing. On first boot the app seeds a default account (`user` / `User@123`) if the users collection is empty, so there's always a way in during testing.
+
+## Highlights
+
+- **Model:** `all-MiniLM-L6-v2` sentence-transformer, loaded once at startup.
+- **Scoring:** cosine similarity × 100, rounded to 2 decimals; resumes ranked per request with no fixed cap.
+- **Two-signal feedback:** combines semantic similarity with raw keyword overlap so the advice isn't a black box.
+- **Deployment target:** the bundled UI points at a Hugging Face Spaces endpoint (`denistan2005-job-screening-assistant.hf.space`), and the Dockerfile is wired for the Spaces convention (gunicorn on port 7860).
+
+This is an unsupervised similarity tool — there's no labeled test set, so there are no accuracy/F1 numbers to quote, and intentionally so.
 
 ## Tech Stack
-- **Frontend:** HTML, CSS, JavaScript (Jinja2 templating via Flask)
-- **Backend:** Python (Flask)
-- **NLP Libraries:** spaCy, scikit-learn, pdfplumber, sentence-transformers, torch, transformers
-- **Database:** MongoDB (for user management)
-- **Containerization:** Docker
 
----
+- **Language:** Python 3.10
+- **Web framework:** Flask 3.0 + Jinja2 templates, Flask-CORS, served with gunicorn
+- **NLP / ML:** sentence-transformers 2.5 (`all-MiniLM-L6-v2`), PyTorch 2.2, Hugging Face transformers 4.38
+- **PDF parsing:** pdfplumber
+- **Database / auth:** MongoDB via pymongo, bcrypt for password hashing
+- **Front-end:** HTML, CSS, vanilla JavaScript
+- **Infra:** Docker (Python 3.10-slim base), deployed on Hugging Face Spaces
 
 ## Getting Started
 
 ### Prerequisites
-- Python 3.8+
+
+- Python 3.10+
 - pip
-- Docker (optional, for containerized deployment)
+- A MongoDB connection string (Atlas or self-hosted) — login, registration, and the default-user seeding all need it
+- Docker (optional, for the containerized path)
 
 ### Installation
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/DCode-v05/Job-Screening-Assistant.git
-   cd Job-Screening-Assistant
-   ```
-2. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. **Run the Application**
-   ```bash
-   python app.py
-   ```
-4. **Access the App**
-   Open your browser and go to: [http://localhost:5000](http://localhost:5000)
 
-### Docker Deployment
-1. **Build Docker Image**
-   ```bash
-   docker build -t job_screening_assistant .
-   ```
-2. **Run Docker Container**
-   ```bash
-   docker run -p 5000:5000 job_screening_assistant
-   ```
+```bash
+git clone https://github.com/DCode-v05/Job-Screening-Assistant.git
+cd Job-Screening-Assistant
+pip install -r requirements.txt
+```
 
----
+Before running, set your MongoDB URI. In `app.py` the `MONGO_URI` value ships as the placeholder `"YOUR_MONGODB_URI"`; replace it with a real connection string (or wire it to an environment variable) or the database-backed features won't connect.
+
+### Running locally
+
+```bash
+python app.py
+```
+
+This starts Flask on `http://localhost:5000`. The first run downloads the MiniLM model into the Hugging Face cache.
+
+### Running with Docker
+
+```bash
+docker build -t job-screening-assistant .
+docker run -p 7860:7860 job-screening-assistant
+```
+
+The container serves the app with gunicorn on port 7860 (matching the Hugging Face Spaces convention), so visit `http://localhost:7860`.
 
 ## Usage
-- Navigate to the home page.
-- Register or log in as a user.
-- Upload one or more PDF resumes.
-- Paste or upload a job description.
-- Submit to receive compatibility scores and detailed feedback for each candidate.
 
----
+1. Open the app and log in, or register a new account (or use the seeded `user` / `User@123` if MongoDB is connected).
+2. Go to the Resume Analyzer page.
+3. Paste the job description into the text box.
+4. Select one or more PDF resumes to upload.
+5. Submit. You get back a ranked list — each candidate with a 0–100 match score and a short feedback note on keyword fit, semantic match, and resume length.
+
+To call the scoring engine directly:
+
+```bash
+curl -X POST http://localhost:5000/api/upload \
+  -F "job_description=Backend engineer with Python and REST API experience" \
+  -F "resumes=@alice.pdf" \
+  -F "resumes=@bob.pdf"
+```
+
+The response is a JSON array sorted best-match-first.
 
 ## Project Structure
+
 ```
 Job-Screening-Assistant/
-  ├── app.py                # Main Flask application
-  ├── requirements.txt      # Python dependencies
-  ├── Dockerfile            # Docker configuration
-  ├── README.md             # Project documentation
-  └── templates/            # HTML templates and static assets
-      ├── home.html
-      ├── index.html
-      ├── Resume_ATS.html
-      └── logo.png
+├── app.py                   # Flask app: routes, PDF parsing, SBERT scoring, feedback, auth
+├── requirements.txt         # Python dependencies (Flask, sentence-transformers, torch, pymongo, ...)
+├── Dockerfile               # Python 3.10-slim image; gunicorn on port 7860
+├── README.md                # Project docs
+└── templates/
+    ├── index.html           # Login / register page
+    ├── home.html            # Landing page ("Deep Thinkers") linking to the analyzer
+    ├── Resume_ATS.html      # Analyzer UI: JD input, multi-PDF upload, results view
+    └── logo.png             # Project logo
 ```
 
----
-
-## Contributing
-
-Contributions are welcome! To contribute:
-1. Fork the repository
-2. Create a new branch:
-   ```bash
-   git checkout -b feature/your-feature
-   ```
-3. Commit your changes:
-   ```bash
-   git commit -m "Add your feature"
-   ```
-4. Push to your branch:
-   ```bash
-   git push origin feature/your-feature
-   ```
-5. Open a pull request describing your changes.
-   
 ---
 
 ## Contact
-- **GitHub:** [https://github.com/DCode-v05](https://github.com/DCode-v05)
-- **Email:** denistanb05@gmail.com
+
+**Portfolio:** [Denistan](https://www.denistan.me)<br>
+**LinkedIn:** [Denistan](https://www.linkedin.com/in/denistanb)<br>
+**GitHub:** [DCode-v05](https://github.com/DCode-v05)<br>
+**LeetCode:** [Denistan_B](https://leetcode.com/u/Denistan_B)<br>
+**Email:** [denistanb05@gmail.com](mailto:denistanb05@gmail.com)
+
+Made with ❤️ by **Denistan B**

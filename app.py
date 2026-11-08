@@ -17,7 +17,6 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hu
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# BERT model
 model_ats = SentenceTransformer("all-MiniLM-L6-v2")
 
 app = Flask(__name__)
